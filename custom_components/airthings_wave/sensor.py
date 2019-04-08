@@ -33,46 +33,15 @@ from homeassistant.const import (ATTR_DEVICE_CLASS, ATTR_ICON, CONF_MAC,
                                  EVENT_HOMEASSISTANT_STOP, ILLUMINANCE,
                                  STATE_UNKNOWN)
 from homeassistant.helpers.entity import Entity
+from wave_constants import *
 
-REQUIREMENTS = ['pygatt[GATTTOOL]==3.2.0']
+REQUIREMENTS = ['pygatt[GATTTOOL]==4.0.3']
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 DEFAULT_NAME = 'Airthings Wave'
-CONNECT_LOCK = threading.Lock()
+#CONNECT_LOCK = threading.Lock()
 CONNECT_TIMEOUT = 30
 SCAN_INTERVAL = timedelta(seconds=300)
-
-ATTR_DEVICE_DATE_TIME = 'device_date_time'
-ATTR_RADON_LEVEL = 'radon_level'
-DEVICE_CLASS_RADON='radon'
-DEVICE_CLASS_ACCELEROMETER='accelerometer'
-ILLUMINANCE_LUX = 'lx'
-PERCENT = '%'
-SPEED_METRIC_UNITS = 'm/s2'
-VOLUME_BECQUEREL = 'Bq/m3'
-VOLUME_PICOCURIE = 'pCi/L'
-
-BQ_TO_PCI_MULTIPLIER = 0.037
-
-"""
-0 - 49 Bq/m3  (0 - 1.3 pCi/L):
-No action necessary.
-
-50 - 99 Bq/m3 (1.4 - 2.6 pCi/L):
-Experiment with ventilation and sealing cracks to reduce levels.
-
-100 Bq/m3 - 299 Bq/m3 (2.7 - 8 pCi/L):
-Keep measuring. If levels are maintained for more than 3 months,
-contact a professional radon mitigator.
-
-300 Bq/m3 (8.1 pCi/L) and up:
-Keep measuring. If levels are maintained for more than 1 month,
-contact a professional radon mitigator.
-"""
-VERY_LOW = [0, 49, 'very low']
-LOW = [50, 99, 'low']
-MODERATE = [100, 299, 'moderate']
-HIGH = [300, None, 'high']
 
 CHAR_UUID_DATETIME = UUID(0x2A08)
 CHAR_UUID_TEMPERATURE = UUID(0x2A6E)
@@ -80,6 +49,8 @@ CHAR_UUID_HUMIDITY = UUID(0x2A6F)
 CHAR_UUID_RADON_1DAYAVG = 'b42e01aa-ade7-11e4-89d3-123b93f75cba'
 CHAR_UUID_RADON_LONG_TERM_AVG = 'b42e0a4c-ade7-11e4-89d3-123b93f75cba'
 CHAR_UUID_ILLUMINANCE_ACCELEROMETER = 'b42e1348-ade7-11e4-89d3-123b93f75cba'
+"""All sensors are stored in a signle characteristic for the Wave Plus"""
+CHAR_UUID_WAVE_PLUS = 'b42e2a68-ade7-11e4-89d3-123b93f75cba'
 
 UNIT_SYSTEMS = [CONF_UNIT_SYSTEM_IMPERIAL, CONF_UNIT_SYSTEM_METRIC]
 
@@ -97,16 +68,26 @@ class Sensor:
         self.format_type = format_type
         self.scale = scale
 
+class Wave
+    def __init__(self)
+        self.sensors = []
+        self.sensors.append(Sensor('date_time', CHAR_UUID_DATETIME, 'HBBBBB', 0))
+        self.sensors.append(Sensor('temperature', CHAR_UUID_TEMPERATURE, 'h', 1.0/100.0))
+        self.sensors.append(Sensor('humidity', CHAR_UUID_HUMIDITY, 'H', 1.0/100.0))
+        self.sensors.append(Sensor('radon_1day_avg', CHAR_UUID_RADON_1DAYAVG, 'H', 1.0))
+        self.sensors.append(Sensor('radon_longterm_avg',
+            CHAR_UUID_RADON_LONG_TERM_AVG, 'H', 1.0))
+        self.sensors.append(Sensor('illuminance_accelerometer',
+            CHAR_UUID_ILLUMINANCE_ACCELEROMETER, 'BB', 1.0))
 
-sensors = []
-sensors.append(Sensor('date_time', CHAR_UUID_DATETIME, 'HBBBBB', 0))
-sensors.append(Sensor('temperature', CHAR_UUID_TEMPERATURE, 'h', 1.0/100.0))
-sensors.append(Sensor('humidity', CHAR_UUID_HUMIDITY, 'H', 1.0/100.0))
-sensors.append(Sensor('radon_1day_avg', CHAR_UUID_RADON_1DAYAVG, 'H', 1.0))
-sensors.append(Sensor('radon_longterm_avg',
-    CHAR_UUID_RADON_LONG_TERM_AVG, 'H', 1.0))
-sensors.append(Sensor('illuminance_accelerometer',
-    CHAR_UUID_ILLUMINANCE_ACCELEROMETER, 'BB', 1.0))
+class WavePlus
+    def __init__(self)
+        self.sensors = []
+        self.sensors.append(Sensor('date_time', CHAR_UUID_DATETIME, '<xbxbHHHHHHxxxx', 0))
+
+
+
+
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
@@ -116,7 +97,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     scan_interval = config.get(CONF_SCAN_INTERVAL)
     unit_system = config.get(CONF_UNIT_SYSTEM)
 
-    _LOGGER.debug("Setting up...")
+    LOGGER.debug("Setting up...")
 
     if CONF_UNIT_SYSTEM in config:
         unit_system = config[CONF_UNIT_SYSTEM]
@@ -137,7 +118,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     def monitor_stop(_service_or_event):
         """Stop the monitor thread."""
-        _LOGGER.info("Stopping monitor for %s", name)
+        LOGGER.info("Stopping monitor for %s", name)
         mon.terminate()
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, monitor_stop)
@@ -233,7 +214,7 @@ class AirthingsRadon(Entity):
                 self.converted_radon_data = self.mon.data[self._subclass]
 
         except Exception as ex:
-            _LOGGER.warn("Radon data is : got an exception: %s", ex)
+            LOGGER.warn("Radon data is : got an exception: %s", ex)
             self.converted_radon_data = self.mon.data[self._subclass]
 
         return self.converted_radon_data
@@ -260,7 +241,7 @@ class AirthingsRadon(Entity):
             else:
                 self.radon_level = HIGH[2]
         except Exception as ex:
-            _LOGGER.warn("Radon level is : got an exception: %s", ex)
+            LOGGER.warn("Radon level is : got an exception: %s", ex)
             self.radon_level = STATE_UNKNOWN
 
         return {
@@ -362,7 +343,7 @@ class Monitor(threading.Thread):
         adapter = pygatt.backends.GATTToolBackend()
         try:
             while self.keep_going:
-                _LOGGER.debug("Connecting to %s", self.name)
+                LOGGER.debug("Connecting to %s", self.name)
 
                 # We need concurrent connect, so lets not reset the device
                 adapter.start(reset_on_start=False)
@@ -373,7 +354,7 @@ class Monitor(threading.Thread):
                 for s in sensors:
                     val = struct.unpack(s.format_type,
                         device.char_read(s.uuid, timeout=CONNECT_TIMEOUT))
-                    _LOGGER.debug("Sensor %s: %s", s.name, val)
+                    LOGGER.debug("Sensor %s: %s", s.name, val)
 
                     if s.name == 'date_time':
                         val = str(datetime(val[0], val[1], val[2], val[3],
@@ -389,13 +370,13 @@ class Monitor(threading.Thread):
                 self.event.wait(self.scan_interval.total_seconds())
 
         except (BLEError, NotConnectedError, NotificationTimeout) as ex:
-            _LOGGER.error("Exception: %s ", str(ex))
+            LOGGER.error("Exception: %s ", str(ex))
         finally:
             adapter.stop()
 
     def terminate(self):
         """Signal runner to stop and join thread."""
-        _LOGGER.debug("Terminating the thread")
+        LOGGER.debug("Terminating the thread")
         self.keep_going = False
         self.event.set()
         self.join()
